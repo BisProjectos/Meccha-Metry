@@ -1,5 +1,5 @@
 // game/main.js
-// Core engine setup and game loop.
+// Core engine setup, system initialization, and game loop.
 
 const Game = {
     scene: null,
@@ -9,7 +9,8 @@ const Game = {
     localPlayer: null,
     state: {
         isMoving: false,
-        isRunning: false
+        isRunning: false,
+        isPosing: false // Updated by playerposes.js
     },
 
     init() {
@@ -23,7 +24,7 @@ const Game = {
         // 2. Scene Setup
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x1a1a1a);
-        this.scene.fog = new THREE.Fog(0x1a1a1a, 30, 80);
+        this.scene.fog = new THREE.Fog(0x1a1a1a, 40, 100);
 
         // 3. Camera Setup
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -42,10 +43,16 @@ const Game = {
         this.scene.add(ambientLight);
 
         const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(10, 20, 10);
+        dirLight.position.set(15, 30, 15);
         dirLight.castShadow = true;
         dirLight.shadow.mapSize.width = 2048;
         dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 100;
+        dirLight.shadow.camera.left = -40;
+        dirLight.shadow.camera.right = 40;
+        dirLight.shadow.camera.top = 40;
+        dirLight.shadow.camera.bottom = -40;
         this.scene.add(dirLight);
 
         // 6. Local Player Setup
@@ -53,21 +60,42 @@ const Game = {
         this.localPlayer.group.position.y = 0; // Stand on the floor
         this.scene.add(this.localPlayer.group);
 
-        // Static camera position for now (cameracontrols.js will replace this)
-        this.camera.position.set(0, 4, 8);
-        this.camera.lookAt(0, 1, 0);
+        // 7. Initialize Sub-systems (Order matters!)
+        UI.init();
+        PlayerPainting.init();
+        PlayerPainting.applyToModel(this.localPlayer);
+        Controls.init();
+        ClimbingControls.init();
+        Painter.init();
+        CameraControls.init();
+        MapHandaling.init();
+        RoleHandaler.init();
+        GameMode.init();
 
-        // 7. Clock for delta time
-        this.clock = new THREE.Clock();
+        // 8. Load the Lobby Map
+        Maps.loadIntermissionMap(this.scene);
 
-        // 8. Reconnect P2P
+        // 9. Setup P2P Data Router
+        P2P.onGameDataReceived = (payload) => {
+            // Route to game mode
+            if (payload.type === 'round_start') {
+                GameMode.handleGameData(payload);
+            }
+            // Route to role handler
+            else if (payload.type === 'volunteer_update' || payload.type === 'role_assignment') {
+                RoleHandaler.handleGameData(payload);
+            }
+        };
+
+        // 10. Reconnect P2P
         if (P2P.isHost) {
             P2P.hostGame();
         } else {
             P2P.joinGame(P2P.roomCode);
         }
 
-        // 9. Start Game Loop
+        // 11. Clock & Game Loop
+        this.clock = new THREE.Clock();
         this.animate();
         
         // Handle window resize
@@ -78,8 +106,17 @@ const Game = {
         requestAnimationFrame(() => this.animate());
         const delta = this.clock.getDelta();
 
-        // Update player animation
-        // (For now, isMoving/isRunning are false. controls.js will update Game.state later)
+        // Update input and movement
+        Controls.update(delta);
+        ClimbingControls.update(delta);
+        
+        // Update camera (must happen after player moves)
+        CameraControls.update(delta);
+        
+        // Update painting raycaster
+        Painter.update();
+
+        // Update player animations
         if (this.localPlayer) {
             this.localPlayer.updateAnimation(delta, this.state.isMoving, this.state.isRunning);
         }
@@ -95,7 +132,7 @@ const Game = {
     }
 };
 
-// Global helper to leave the game (will be hooked up by ui.js later)
+// Global helper to leave the game
 function leaveGame() {
     P2P.disconnect();
     window.location.href = 'index.html';
