@@ -6,81 +6,56 @@
     <title>Meccha Metry - Game</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Russo+One&display=swap" rel="stylesheet">
+    
+    <!-- Core Libraries -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="server/p2p.js"></script>
+
     <style>
-        :root { --bg-color: #1a1a1a; --text-color: #e0e0e0; --accent-color: #ff4a4a; --panel-color: rgba(20, 20, 20, 0.8); }
+        :root { --bg-color: #1a1a1a; --text-color: #e0e0e0; --accent-color: #ff4a4a; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Russo One', sans-serif; background-color: var(--bg-color); color: var(--text-color); overflow: hidden; height: 100vh; }
         #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         
-        /* HUD & Menus */
-        .ui-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-        .ui-element { pointer-events: auto; background: var(--panel-color); padding: 15px; border-radius: 4px; border: 1px solid #333; }
+        /* UI Overlay layer - ui.js will manage the contents of these */
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        .ui-layer > * { pointer-events: auto; }
         
-        #top-left { position: absolute; top: 20px; left: 20px; }
-        #top-right { position: absolute; top: 20px; right: 20px; text-align: right; }
-        
-        /* Host Settings */
-        .host-panel { display: none; flex-direction: column; gap: 10px; }
-        .host-panel.active { display: flex; }
-        input[type="range"] { width: 100%; }
-        
-        /* Paint Tools */
-        #paint-tools { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: none; flex-direction: column; align-items: center; gap: 10px; }
-        #paint-tools.active { display: flex; }
-        .paint-row { display: flex; gap: 10px; }
-        .paint-btn { background: #333; color: white; border: 1px solid #555; padding: 8px 12px; cursor: pointer; font-family: 'Russo One', sans-serif; }
-        .paint-btn.active { background: var(--accent-color); border-color: var(--accent-color); }
-        
-        .btn-leave { background: transparent; border: 2px solid #555; color: #888; padding: 8px 16px; cursor: pointer; font-family: 'Russo One', sans-serif; border-radius: 4px; }
-        .btn-leave:hover { border-color: var(--accent-color); color: var(--accent-color); }
-        
-        #role-indicator { font-size: 1.5rem; margin-bottom: 10px; color: var(--accent-color); }
+        #hud-container { position: absolute; top: 20px; left: 20px; }
+        #host-menu { position: absolute; top: 20px; right: 20px; display: none; }
+        #painter-ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: none; }
+        #pose-wheel { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none; }
     </style>
 </head>
 <body>
+    <!-- 3D Canvas -->
     <canvas id="game-canvas"></canvas>
 
-    <div class="ui-overlay">
-        <div id="top-left" class="ui-element">
-            <div id="role-indicator">INTERMISSION</div>
-            <div id="timer-display">00:00</div>
-            <button class="btn-leave" onclick="leaveGame()">Leave Game</button>
-        </div>
-
-        <div id="top-right">
-            <!-- Host Settings -->
-            <div id="host-settings" class="ui-element host-panel">
-                <h3>Host Settings</h3>
-                <label>Round Time: <span id="time-val">120</span>s</label>
-                <input type="range" id="time-slider" min="100" max="300" step="10" value="120" oninput="updateTimeVal(this.value)">
-                <button class="paint-btn" onclick="GameMode.startRound()">Start Round</button>
-            </div>
-        </div>
-
-        <!-- Paint Tools (Visible when in Paint Mode) -->
-        <div id="paint-tools" class="ui-element">
-            <div class="paint-row">
-                <button class="paint-btn active" onclick="Painting.setTool('brush')">Brush</button>
-                <button class="paint-btn" onclick="Painting.setTool('fill')">Fill</button>
-                <button class="paint-btn" onclick="Painting.setTool('eyedropper')">Eyedropper</button>
-            </div>
-            <div class="paint-row">
-                <input type="color" id="paint-color" value="#ff0000" onchange="Painting.setColor(this.value)">
-                <input type="range" id="brush-size" min="1" max="32" value="4" onchange="Painting.setBrushSize(this.value)">
-                <button class="paint-btn" onclick="Controls.togglePaintMode()">Exit (F)</button>
-            </div>
-        </div>
+    <!-- UI Containers managed by game/ui.js -->
+    <div class="ui-layer">
+        <div id="hud-container"></div>       <!-- Timer, Role, Leave Button -->
+        <div id="host-menu"></div>           <!-- Host round settings -->
+        <div id="painter-ui"></div>          <!-- Color wheel, sliders, tools -->
+        <div id="pose-wheel"></div>          <!-- Sit, lie, stand wheel -->
     </div>
 
-    <!-- Replace the old script section at the bottom of game.html with this -->
-    <script src="Game/maps.js"></script>
-    <script src="Game/mapselector.js"></script>
-    <script src="Game/gamemode.js"></script>
-    <script src="Game/controls.js"></script>
-    <script src="Game/painting.js"></script>
-    <script src="Game/main.js"></script>
+    <!-- 
+        Game Systems loaded in strict order.
+        We will build these 1 by 1.
+    -->
+    <script src="assets/playermodel.js"></script>
+    <script src="game/ui.js"></script>
+    <script src="game/playerpainting.js"></script>
+    <script src="game/playerposes.js"></script>
+    <script src="game/controls.js"></script>
+    <script src="game/climbingcontrols.js"></script>
+    <script src="game/painter.js"></script>
+    <script src="game/cameracontrols.js"></script>
+    <script src="game/intermissionmap.js"></script>
+    <script src="game/maphandaling.js"></script>
+    <script src="game/rolehandaler.js"></script>
+    <script src="game/gamemode.js"></script>
+    <script src="game/main.js"></script>
 </body>
 </html>
