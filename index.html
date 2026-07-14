@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meccha Metry</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Parisienne&family=Russo+One&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="server/p2p.js"></script>
+    <style>
+        :root {
+            --bg-color: #1a1a1a; --text-color: #e0e0e0; --accent-color: #ff4a4a;
+            --panel-color: #2a2a2a; --btn-color: #3a3a3a; --btn-hover: #4a4a4a;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: Arial, sans-serif; background-color: var(--bg-color); color: var(--text-color);
+            overflow: hidden; height: 100vh; display: flex; justify-content: center; align-items: center;
+            background: radial-gradient(circle at center, #2a2a2a 0%, #111 100%);
+        }
+        .screen { display: none; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+        .screen.active { display: flex; }
+        .logo { font-family: 'Russo One', sans-serif; font-size: 4rem; letter-spacing: 4px; margin-bottom: 10px; text-transform: uppercase; text-shadow: 4px 4px 0px var(--accent-color); }
+        .subtitle { font-family: 'Parisienne', cursive; font-size: 2rem; color: #ccc; margin-bottom: 40px; }
+        .btn { background-color: var(--btn-color); color: var(--text-color); border: 2px solid #555; padding: 15px 30px; font-size: 1.2rem; font-family: 'Russo One', sans-serif; text-transform: uppercase; cursor: pointer; margin: 10px 0; width: 300px; transition: all 0.2s ease; border-radius: 4px; }
+        .btn:hover { background-color: var(--btn-hover); border-color: var(--accent-color); transform: translateY(-2px); }
+        .btn-small { width: auto; padding: 8px 16px; font-size: 0.9rem; }
+        .cog { position: absolute; top: 20px; right: 20px; background: none; border: none; cursor: pointer; opacity: 0.7; transition: opacity 0.2s, transform 0.3s; z-index: 100; fill: var(--text-color); }
+        .cog:hover { opacity: 1; transform: rotate(90deg); }
+        .modal-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; z-index: 50; }
+        .modal-overlay.active { display: flex; }
+        .modal-box { background: var(--panel-color); padding: 40px; border-radius: 8px; text-align: center; border: 1px solid #444; }
+        .modal-box h2 { font-family: 'Russo One', sans-serif; margin-bottom: 20px; }
+        .modal-box p { color: #aaa; margin-bottom: 20px; font-size: 0.9rem; }
+        .input-field { background: #1a1a1a; border: 2px solid #555; padding: 12px; color: white; font-size: 1rem; width: 280px; margin-bottom: 15px; border-radius: 4px; font-family: Arial, sans-serif; text-align: center; }
+        .input-field:focus { outline: none; border-color: var(--accent-color); }
+        .error-text { color: var(--accent-color); font-size: 0.85rem; margin-top: -10px; margin-bottom: 10px; display: none; }
+        .lobby-container { display: flex; flex-direction: column; align-items: center; width: 80%; max-width: 600px; }
+        .lobby-header { font-family: 'Russo One', sans-serif; font-size: 1.5rem; margin-bottom: 20px; }
+        .room-code-box { background: #1a1a1a; border: 2px dashed #555; padding: 15px 30px; font-family: 'Russo One', sans-serif; font-size: 2rem; letter-spacing: 4px; margin-bottom: 15px; border-radius: 4px; cursor: pointer; position: relative; }
+        .room-code-box:hover { border-color: var(--accent-color); }
+        .copy-tooltip { position: absolute; top: -30px; left: 50%; transform: translateX(-50%); background: var(--accent-color); color: white; padding: 4px 8px; font-size: 0.8rem; border-radius: 4px; display: none; }
+        .player-list-container { margin-top: 30px; width: 100%; background: var(--panel-color); border: 1px solid #333; border-radius: 8px; padding: 20px; min-height: 150px; }
+        .player-list-title { font-family: 'Russo One', sans-serif; margin-bottom: 10px; text-align: center; color: #888; }
+        .player-list { list-style: none; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+        .player-tag { background: #333; padding: 5px 12px; border-radius: 20px; font-size: 0.9rem; }
+        .player-tag.host { border: 1px solid var(--accent-color); color: var(--accent-color); }
+        .lobby-controls { margin-top: 30px; display: flex; gap: 20px; }
+        .btn-end { position: absolute; top: 20px; left: 20px; background: transparent; border: 2px solid var(--accent-color); color: var(--accent-color); z-index: 100; }
+        .btn-end:hover { background: var(--accent-color); color: white; }
+        .connection-status { margin-top: 15px; font-size: 0.8rem; color: #888; }
+    </style>
+</head>
+<body>
+
+    <button class="cog" id="cog-btn" onclick="openUsernameModal()" style="display: none;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/>
+        </svg>
+    </button>
+
+    <div class="modal-overlay active" id="username-modal">
+        <div class="modal-box">
+            <h2>Enter a Username</h2>
+            <p>For games. No special characters, only letters and numbers.</p>
+            <input type="text" class="input-field" id="username-input" maxlength="12" placeholder="Username...">
+            <div class="error-text" id="username-error">Invalid characters detected!</div>
+            <br>
+            <button class="btn btn-small" onclick="submitUsername()">Play</button>
+        </div>
+    </div>
+
+    <div class="screen" id="main-menu">
+        <h1 class="logo">Meccha Metry</h1>
+        <h2 class="subtitle">Paint yourself into the world</h2>
+        <button class="btn" onclick="initiateHost()">Host a Game</button>
+        <button class="btn" onclick="showScreen('join-input-screen');">Join a Game</button>
+        <button class="btn" onclick="showScreen('credits-screen');">Credits</button>
+    </div>
+
+    <div class="screen" id="host-screen">
+        <button class="btn btn-small btn-end" onclick="endGame()">End Game</button>
+        <div class="lobby-container">
+            <div class="lobby-header">GAME LOBBY</div>
+            <div class="room-code-box" onclick="copyCode()">
+                <span class="copy-tooltip" id="copy-tooltip">Copied!</span>
+                <span id="room-code-display">------</span>
+            </div>
+            <button class="btn btn-small" onclick="copyCode()">Copy Code</button>
+            <div class="player-list-container">
+                <div class="player-list-title">Players in Lobby</div>
+                <ul class="player-list" id="host-player-list"></ul>
+            </div>
+            <div class="lobby-controls">
+                <button class="btn" onclick="startGame()">Start Game</button>
+            </div>
+            <div class="connection-status" id="host-status">Establishing connection...</div>
+        </div>
+    </div>
+
+    <div class="screen" id="join-input-screen">
+        <div class="modal-box" style="background: none; border: none;">
+            <h2>Enter Host Code</h2>
+            <input type="text" class="input-field" id="code-input" placeholder="Enter Code" maxlength="6" style="text-transform: uppercase;">
+            <br>
+            <button class="btn btn-small" onclick="initiateJoin()">Join</button>
+            <button class="btn btn-small" onclick="showScreen('main-menu')" style="background:transparent; border-color:#555;">Back</button>
+        </div>
+    </div>
+
+    <div class="screen" id="lobby-screen">
+        <button class="btn btn-small btn-end" onclick="leaveLobby()">Leave Game</button>
+        <div class="lobby-container">
+            <div class="lobby-header">Connected to Room</div>
+            <div class="player-list-container">
+                <div class="player-list-title">Players in Lobby</div>
+                <ul class="player-list" id="join-player-list"></ul>
+            </div>
+            <p style="margin-top: 20px; color: #888;">Waiting for host to start the game...</p>
+        </div>
+    </div>
+
+    <div class="screen" id="credits-screen">
+        <h1 class="logo" style="font-size: 2rem;">Credits</h1>
+        <p style="margin-bottom: 30px; font-family: 'Parisienne'; font-size: 1.5rem;">Created by You</p>
+        <button class="btn btn-small" onclick="showScreen('main-menu')">Back</button>
+    </div>
+
+    <script>
+        let myUsername = "";
+
+        P2P.onPlayerListUpdate = (players) => {
+            const listId = P2P.isHost ? 'host-player-list' : 'join-player-list';
+            const list = document.getElementById(listId);
+            list.innerHTML = '';
+            players.forEach(player => {
+                const li = document.createElement('li');
+                li.innerText = player.name + (player.isHost ? " (Host)" : "");
+                li.classList.add('player-tag');
+                if (player.isHost) li.classList.add('host');
+                list.appendChild(li);
+            });
+        };
+
+        // UPDATED: Now saves state and redirects to game.html
+        P2P.onHostStartGame = () => {
+            P2P.saveState();
+            window.location.href = 'game.html';
+        };
+
+        P2P.onError = (errorType) => {
+            if (errorType === 'host-disconnected') {
+                alert("Host has disconnected. Returning to menu.");
+                leaveLobby();
+            } else if (errorType === 'peer-unavailable') {
+                alert("Could not find a game with that code.");
+                showScreen('join-input-screen');
+            } else {
+                console.error("P2P Error:", errorType);
+            }
+        };
+
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+            const cog = document.getElementById('cog-btn');
+            if (screenId === 'main-menu' || screenId === 'credits-screen') cog.style.display = 'block';
+            else cog.style.display = 'none';
+        }
+
+        function openUsernameModal() {
+            document.getElementById('username-modal').classList.add('active');
+            document.getElementById('username-input').value = myUsername;
+        }
+
+        function submitUsername() {
+            const input = document.getElementById('username-input').value;
+            const error = document.getElementById('username-error');
+            const regex = /^[a-zA-Z0-9]+$/;
+            if (regex.test(input) && input.length > 0) {
+                myUsername = input;
+                P2P.init(myUsername);
+                error.style.display = 'none';
+                document.getElementById('username-modal').classList.remove('active');
+                if (!document.querySelector('.screen.active')) showScreen('main-menu');
+            } else {
+                error.style.display = 'block';
+            }
+        }
+
+        function initiateHost() {
+            showScreen('host-screen');
+            P2P.hostGame();
+            setTimeout(() => {
+                document.getElementById('room-code-display').innerText = P2P.roomCode;
+                document.getElementById('host-status').style.display = 'none';
+            }, 500);
+        }
+
+        function copyCode() {
+            navigator.clipboard.writeText(P2P.roomCode).then(() => {
+                const tooltip = document.getElementById('copy-tooltip');
+                tooltip.style.display = 'block';
+                setTimeout(() => { tooltip.style.display = 'none'; }, 1500);
+            });
+        }
+
+        function startGame() { P2P.startGame(); }
+        function endGame() { P2P.disconnect(); showScreen('main-menu'); }
+
+        function initiateJoin() {
+            const code = document.getElementById('code-input').value.toUpperCase();
+            if (code.length === 6) {
+                showScreen('lobby-screen');
+                P2P.joinGame(code);
+            } else {
+                alert("Please enter a valid 6-character code.");
+            }
+        }
+        function leaveLobby() { P2P.disconnect(); showScreen('main-menu'); }
+    </script>
+</body>
+</html>
